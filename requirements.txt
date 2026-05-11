@@ -1,0 +1,7 @@
+# The first version uses only Python standard library modules.
+# Future optional dependencies:
+# pandas
+# numpy
+# scipy
+# scikit-learn
+# sentence-transformers
