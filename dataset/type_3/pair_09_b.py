@@ -13,5 +13,25 @@ def order_list(collection):
     print("swaps:", swaps)
     return copy
 
+def check_ordered(collection):
+    for i in range(len(collection) - 1):
+        if collection[i] > collection[i + 1]:
+            return False
+    return True
 
-print(order_list([5, 1, 4, 2, 8]))
+def ordering_report(collection):
+    print(f"Original        : {collection}")
+    print(f"Already ordered : {check_ordered(collection)}")
+    arranged = order_list(collection)
+    print(f"Ordered result  : {arranged}")
+    print(f"Verified ordered: {check_ordered(arranged)}")
+    running = 0
+    for v in arranged:
+        running += v
+    qty = len(arranged)
+    print(f"Lowest entry    : {arranged[0]}")
+    print(f"Highest entry   : {arranged[-1]}")
+    print(f"Total           : {running}")
+    print(f"Mean            : {running / qty:.2f}")
+
+ordering_report([5, 1, 4, 2, 8])
