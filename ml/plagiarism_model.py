@@ -12,7 +12,7 @@ import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin, clone
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_recall_fscore_support
 from sklearn.model_selection import StratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -102,6 +102,8 @@ class FoldResult:
     accuracy: float
     macro_f1: float
     confusion: np.ndarray
+    per_class: dict[str, dict[str, float]]
+    one_vs_rest_confusion: dict[str, dict[str, int]]
 
 
 class SpecialistEnsemble(BaseEstimator, ClassifierMixin):
@@ -161,10 +163,40 @@ def cross_validate_model(model: object, x: np.ndarray, y: np.ndarray, folds: int
         fold_model.fit(x[train_index], y[train_index])
         predictions[test_index] = fold_model.predict(x[test_index])
 
+    precision, recall, f1, support = precision_recall_fscore_support(
+        y,
+        predictions,
+        labels=list(LABELS),
+        zero_division=0,
+    )
+    per_class = {
+        label: {
+            "precision": float(precision[index]),
+            "recall": float(recall[index]),
+            "f1": float(f1[index]),
+            "support": float(support[index]),
+        }
+        for index, label in enumerate(LABELS)
+    }
+    one_vs_rest_confusion = {}
+    for label in LABELS:
+        true_positive = int(np.sum((y == label) & (predictions == label)))
+        false_positive = int(np.sum((y != label) & (predictions == label)))
+        false_negative = int(np.sum((y == label) & (predictions != label)))
+        true_negative = int(np.sum((y != label) & (predictions != label)))
+        one_vs_rest_confusion[label] = {
+            "tp": true_positive,
+            "fp": false_positive,
+            "fn": false_negative,
+            "tn": true_negative,
+        }
+
     return FoldResult(
         accuracy=accuracy_score(y, predictions),
         macro_f1=f1_score(y, predictions, average="macro"),
         confusion=confusion_matrix(y, predictions, labels=list(LABELS)),
+        per_class=per_class,
+        one_vs_rest_confusion=one_vs_rest_confusion,
     )
 
 

@@ -16,6 +16,35 @@ def format_confusion(confusion: object) -> str:
     return "\n".join(rows)
 
 
+def format_per_class(result: object) -> str:
+    rows = ["type       precision  recall  f1     support"]
+    for label in LABELS:
+        metrics = result.per_class[label]
+        rows.append(
+            f"{label:<10} "
+            f"{metrics['precision']:.3f}      "
+            f"{metrics['recall']:.3f}   "
+            f"{metrics['f1']:.3f}  "
+            f"{int(metrics['support']):7d}"
+        )
+    return "\n".join(rows)
+
+
+def format_one_vs_rest_confusion(result: object) -> str:
+    rows = []
+    for label in LABELS:
+        values = result.one_vs_rest_confusion[label]
+        rows.extend(
+            [
+                f"{label} vs REST",
+                "                 pred label  pred rest",
+                f"true label       {values['tp']:10d} {values['fn']:10d}",
+                f"true rest        {values['fp']:10d} {values['tn']:10d}",
+            ]
+        )
+    return "\n".join(rows)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Evaluate multiclass and specialist plagiarism type models."
@@ -60,9 +89,12 @@ def main() -> None:
 
     for name, result in sorted(results.items(), key=lambda item: item[1].macro_f1, reverse=True):
         print(f"{name:<12} accuracy={result.accuracy:.3f} macro_f1={result.macro_f1:.3f}")
+        print(format_per_class(result))
+        print()
+        print(format_one_vs_rest_confusion(result))
+        print()
 
     selected = select_best_model(results) if args.model == "auto" else args.model
-    print()
     print(f"Selected model: {selected}")
     print(format_confusion(results[selected].confusion))
 
