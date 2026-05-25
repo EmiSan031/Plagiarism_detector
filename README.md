@@ -53,7 +53,13 @@ print(features["hybrid_score"])
 
 ## Entrenamiento supervisado
 
-El proyecto genera una tabla de entrenamiento a partir de los pares en `dataset/type_1`, `dataset/type_2`, `dataset/type_3` y `dataset/type_4`.
+El proyecto genera una tabla de entrenamiento a partir de los pares en `dataset/no_plagiarism`, `dataset/type_1`, `dataset/type_2`, `dataset/type_3` y `dataset/type_4`.
+
+Si necesitas reconstruir la clase negativa inicial:
+
+```bash
+python generate_no_plagiarism_dataset.py
+```
 
 ```bash
 python build_training_table.py
@@ -63,13 +69,14 @@ Despues entrena y evalua tres enfoques:
 
 - `logistic`: un modelo multiclase unico.
 - `forest`: un modelo multiclase basado en Random Forest.
-- `specialists`: cuatro modelos binarios one-vs-rest, uno por tipo de plagio.
+- `forest_refined`: Random Forest multiclase con refinador binario para `TYPE_III` vs `TYPE_IV`.
+- `specialists`: modelos binarios one-vs-rest, uno por clase.
 
 ```bash
 python train_models.py
 ```
 
-La salida muestra accuracy, macro-F1 y matriz de confusion. Por default usa `--feature-set core`, elige automaticamente el modelo con mejor macro-F1 y guarda el artefacto en:
+La salida muestra accuracy, macro-F1, metricas por clase, matrices one-vs-rest por tipo, matriz de confusion global y feature importance. Por default usa `--feature-set core`, elige automaticamente el modelo con mejor macro-F1 y guarda el artefacto en:
 
 ```text
 models/plagiarism_model.joblib
@@ -82,6 +89,7 @@ python train_models.py --feature-set core
 python train_models.py --feature-set all
 python train_models.py --feature-set family
 python train_models.py --model specialists
+python train_models.py --model forest_refined
 python train_models.py --folds 10
 ```
 
@@ -101,7 +109,7 @@ python predict_plagiarism.py --code-a original.py --code-b sospechoso.py --json
 
 La prediccion incluye:
 
-- tipo estimado: `TYPE_I`, `TYPE_II`, `TYPE_III` o `TYPE_IV`
+- tipo estimado: `NO_PLAGIO`, `TYPE_I`, `TYPE_II`, `TYPE_III` o `TYPE_IV`
 - confianza del modelo
 - probabilidades por tipo
 - `hybrid_score`
@@ -116,4 +124,4 @@ El score hibrido sigue siendo util como senal interpretable, pero ya no es la de
 3. Elegir automaticamente el mejor por macro-F1.
 4. Usar especialistas solo si superan al modelo multiclase.
 
-Nota: el dataset actual solo contiene pares con plagio/clones. Para detectar tambien "no plagio", agrega ejemplos negativos y una etiqueta adicional como `NO_PLAGIO`.
+Nota: la clase `NO_PLAGIO` incluida es un punto de partida balanceado con 30 pares negativos. Para resultados mas solidos, conviene agregar mas pares negativos reales y mas ejemplos de `TYPE_III`/`TYPE_IV`.

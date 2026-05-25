@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import ast
+from collections import Counter
 
-from .common import normalized_levenshtein_similarity, python_tokens
+from .common import cosine_from_counters, jaccard_similarity, normalized_levenshtein_similarity, python_tokens
 from .syntactic import parse_ast
 
 
@@ -55,7 +56,92 @@ def normalized_semantic_similarity(code_a: str, code_b: str) -> float:
     )
 
 
+def call_names(code: str) -> list[str]:
+    tree = parse_ast(code)
+    if tree is None:
+        return []
+    names: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                names.append(node.func.id)
+            elif isinstance(node.func, ast.Attribute):
+                names.append(node.func.attr)
+            else:
+                names.append(type(node.func).__name__)
+    return names
+
+
+def operator_profile(code: str) -> Counter:
+    tree = parse_ast(code)
+    if tree is None:
+        return Counter()
+    profile: Counter = Counter()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.BinOp):
+            profile[type(node.op).__name__] += 1
+        elif isinstance(node, ast.BoolOp):
+            profile[type(node.op).__name__] += 1
+        elif isinstance(node, ast.Compare):
+            for operator in node.ops:
+                profile[type(operator).__name__] += 1
+        elif isinstance(node, ast.UnaryOp):
+            profile[type(node.op).__name__] += 1
+    return profile
+
+
+def return_expression_shapes(code: str) -> list[str]:
+    tree = parse_ast(code)
+    if tree is None:
+        return []
+    shapes = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Return) and node.value is not None:
+            shapes.append(type(node.value).__name__)
+    return shapes
+
+
+def comprehension_profile(code: str) -> Counter:
+    tree = parse_ast(code)
+    if tree is None:
+        return Counter()
+    profile: Counter = Counter()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ListComp):
+            profile["list_comp"] += 1
+        elif isinstance(node, ast.SetComp):
+            profile["set_comp"] += 1
+        elif isinstance(node, ast.DictComp):
+            profile["dict_comp"] += 1
+        elif isinstance(node, ast.GeneratorExp):
+            profile["generator"] += 1
+    return profile
+
+
+def call_name_similarity(code_a: str, code_b: str) -> float:
+    return jaccard_similarity(call_names(code_a), call_names(code_b))
+
+
+def operator_profile_similarity(code_a: str, code_b: str) -> float:
+    return cosine_from_counters(operator_profile(code_a), operator_profile(code_b))
+
+
+def return_shape_similarity(code_a: str, code_b: str) -> float:
+    return normalized_levenshtein_similarity(
+        return_expression_shapes(code_a),
+        return_expression_shapes(code_b),
+    )
+
+
+def comprehension_similarity(code_a: str, code_b: str) -> float:
+    return cosine_from_counters(comprehension_profile(code_a), comprehension_profile(code_b))
+
+
 def extract_semantic_metrics(code_a: str, code_b: str) -> dict[str, float]:
     return {
         "semantic_normalized_ast": normalized_semantic_similarity(code_a, code_b),
+        "semantic_call_names": call_name_similarity(code_a, code_b),
+        "semantic_operators": operator_profile_similarity(code_a, code_b),
+        "semantic_return_shapes": return_shape_similarity(code_a, code_b),
+        "semantic_comprehensions": comprehension_similarity(code_a, code_b),
     }

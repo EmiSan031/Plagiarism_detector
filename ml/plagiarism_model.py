@@ -17,8 +17,9 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-LABELS = ("TYPE_I", "TYPE_II", "TYPE_III", "TYPE_IV")
+LABELS = ("NO_PLAGIO", "TYPE_I", "TYPE_II", "TYPE_III", "TYPE_IV")
 LABEL_DISPLAY = {
+    "NO_PLAGIO": "No plagio detectado",
     "TYPE_I": "Tipo I: copia casi exacta",
     "TYPE_II": "Tipo II: cambios de nombres/literales",
     "TYPE_III": "Tipo III: cambios estructurales parciales",
@@ -42,6 +43,13 @@ FEATURE_SETS = {
         "control_profile",
         "cyclomatic",
         "nesting_depth",
+        "statement_count",
+        "function_count",
+        "return_count",
+        "call_count",
+        "assignment_count",
+        "branch_count",
+        "loop_count",
         "markov_js",
         "entropy",
         "semantic_normalized_ast",
@@ -92,6 +100,8 @@ def build_classifier(kind: str) -> object:
             n_estimators=300,
             random_state=42,
         )
+    if kind == "forest_refined":
+        return TypeIIIIVRefinedClassifier()
     if kind == "specialists":
         return SpecialistEnsemble()
     raise ValueError(f"Unsupported classifier: {kind}")
@@ -154,6 +164,60 @@ class SpecialistEnsemble(BaseEstimator, ClassifierMixin):
         return np.array([self.labels[index] for index in probabilities.argmax(axis=1)])
 
 
+class TypeIIIIVRefinedClassifier(BaseEstimator, ClassifierMixin):
+    """Multiclass forest with a binary refinement for TYPE_III vs TYPE_IV."""
+
+    def __init__(self, labels: Iterable[str] = LABELS) -> None:
+        self.labels = tuple(labels)
+        self.base_model = RandomForestClassifier(
+            class_weight="balanced",
+            max_depth=5,
+            min_samples_leaf=2,
+            n_estimators=300,
+            random_state=42,
+        )
+        self.refiner = RandomForestClassifier(
+            class_weight="balanced",
+            max_depth=4,
+            min_samples_leaf=2,
+            n_estimators=200,
+            random_state=84,
+        )
+        self.classes_ = np.array(self.labels)
+
+    def fit(self, x: np.ndarray, y: np.ndarray) -> "TypeIIIIVRefinedClassifier":
+        self.base_model.fit(x, y)
+        mask = np.isin(y, ["TYPE_III", "TYPE_IV"])
+        if np.sum(mask) > 0:
+            binary_y = np.array([1 if value == "TYPE_IV" else 0 for value in y[mask]])
+            self.refiner.fit(x[mask], binary_y)
+        return self
+
+    def predict_proba(self, x: np.ndarray) -> np.ndarray:
+        base_classes = [str(label) for label in self.base_model.classes_]
+        base_probabilities = self.base_model.predict_proba(x)
+        probabilities = np.zeros((x.shape[0], len(self.labels)))
+
+        for label_index, label in enumerate(self.labels):
+            if label in base_classes:
+                probabilities[:, label_index] = base_probabilities[:, base_classes.index(label)]
+
+        type_iii_index = self.labels.index("TYPE_III")
+        type_iv_index = self.labels.index("TYPE_IV")
+        type_total = probabilities[:, type_iii_index] + probabilities[:, type_iv_index]
+        refined = self.refiner.predict_proba(x)
+        type_iv_probability = refined[:, 1]
+        probabilities[:, type_iii_index] = type_total * (1.0 - type_iv_probability)
+        probabilities[:, type_iv_index] = type_total * type_iv_probability
+
+        totals = probabilities.sum(axis=1, keepdims=True)
+        return np.divide(probabilities, totals, out=np.zeros_like(probabilities), where=totals != 0)
+
+    def predict(self, x: np.ndarray) -> np.ndarray:
+        probabilities = self.predict_proba(x)
+        return np.array([self.labels[index] for index in probabilities.argmax(axis=1)])
+
+
 def cross_validate_model(model: object, x: np.ndarray, y: np.ndarray, folds: int) -> FoldResult:
     splitter = StratifiedKFold(n_splits=folds, shuffle=True, random_state=42)
     predictions = np.empty_like(y)
@@ -204,7 +268,7 @@ def evaluate_models(
     x: np.ndarray,
     y: np.ndarray,
     folds: int = 5,
-    candidates: Iterable[str] = ("logistic", "forest", "specialists"),
+    candidates: Iterable[str] = ("logistic", "forest", "forest_refined", "specialists"),
 ) -> dict[str, FoldResult]:
     return {
         candidate: cross_validate_model(build_classifier(candidate), x, y, folds)
@@ -237,3 +301,21 @@ def train_final_model(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(artifact, output_path)
     return artifact
+
+
+def feature_importance(model: object, feature_names: list[str], limit: int = 12) -> list[tuple[str, float]]:
+    candidate = model
+    if isinstance(candidate, TypeIIIIVRefinedClassifier):
+        candidate = candidate.base_model
+    if isinstance(candidate, Pipeline):
+        classifier = candidate.named_steps.get("classifier")
+        if hasattr(classifier, "coef_"):
+            weights = np.mean(np.abs(classifier.coef_), axis=0)
+            return sorted(zip(feature_names, weights), key=lambda item: item[1], reverse=True)[:limit]
+    if hasattr(candidate, "feature_importances_"):
+        return sorted(
+            zip(feature_names, candidate.feature_importances_),
+            key=lambda item: item[1],
+            reverse=True,
+        )[:limit]
+    return []

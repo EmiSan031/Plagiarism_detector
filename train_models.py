@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ml import evaluate_models, load_training_data, train_final_model
+from ml import evaluate_models, feature_importance, load_training_data, train_final_model
 from ml.plagiarism_model import LABELS, select_best_model
 
 
@@ -68,7 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--folds", type=int, default=5, help="Stratified CV folds.")
     parser.add_argument(
         "--model",
-        choices=["auto", "logistic", "forest", "specialists"],
+        choices=["auto", "logistic", "forest", "forest_refined", "specialists"],
         default="auto",
         help="Model to train. auto chooses the best macro-F1 from evaluation.",
     )
@@ -98,7 +98,7 @@ def main() -> None:
     print(f"Selected model: {selected}")
     print(format_confusion(results[selected].confusion))
 
-    train_final_model(
+    artifact = train_final_model(
         x=x,
         y=y,
         feature_names=feature_names,
@@ -106,6 +106,12 @@ def main() -> None:
         output_path=Path(args.output),
         feature_set=args.feature_set,
     )
+    importances = feature_importance(artifact["model"], feature_names)
+    if importances:
+        print()
+        print("Top feature importance")
+        for feature, value in importances:
+            print(f"{feature:<24} {value:.4f}")
     print()
     print(f"Saved artifact: {args.output}")
 

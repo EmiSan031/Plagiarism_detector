@@ -74,6 +74,58 @@ def max_control_nesting(code: str) -> int:
     return visit(tree, 0)
 
 
+def count_nodes(code: str, node_type: type[ast.AST]) -> int:
+    tree = parse_ast(code)
+    if tree is None:
+        return 0
+    return sum(1 for node in ast.walk(tree) if isinstance(node, node_type))
+
+
+def count_statements(code: str) -> int:
+    return count_nodes(code, ast.stmt)
+
+
+def count_functions(code: str) -> int:
+    tree = parse_ast(code)
+    if tree is None:
+        return 0
+    return sum(
+        1
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    )
+
+
+def count_returns(code: str) -> int:
+    return count_nodes(code, ast.Return)
+
+
+def count_calls(code: str) -> int:
+    return count_nodes(code, ast.Call)
+
+
+def count_assignments(code: str) -> int:
+    tree = parse_ast(code)
+    if tree is None:
+        return 0
+    return sum(
+        1
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign))
+    )
+
+
+def count_branches(code: str) -> int:
+    return count_nodes(code, ast.If)
+
+
+def count_loops(code: str) -> int:
+    tree = parse_ast(code)
+    if tree is None:
+        return 0
+    return sum(1 for node in ast.walk(tree) if isinstance(node, (ast.For, ast.AsyncFor, ast.While)))
+
+
 def control_profile_similarity(code_a: str, code_b: str) -> float:
     return cosine_from_counters(structural_profile(code_a), structural_profile(code_b))
 
@@ -86,9 +138,44 @@ def nesting_depth_similarity(code_a: str, code_b: str) -> float:
     return numeric_similarity(max_control_nesting(code_a), max_control_nesting(code_b))
 
 
+def statement_count_similarity(code_a: str, code_b: str) -> float:
+    return numeric_similarity(count_statements(code_a), count_statements(code_b))
+
+
+def function_count_similarity(code_a: str, code_b: str) -> float:
+    return numeric_similarity(count_functions(code_a), count_functions(code_b))
+
+
+def return_count_similarity(code_a: str, code_b: str) -> float:
+    return numeric_similarity(count_returns(code_a), count_returns(code_b))
+
+
+def call_count_similarity(code_a: str, code_b: str) -> float:
+    return numeric_similarity(count_calls(code_a), count_calls(code_b))
+
+
+def assignment_count_similarity(code_a: str, code_b: str) -> float:
+    return numeric_similarity(count_assignments(code_a), count_assignments(code_b))
+
+
+def branch_count_similarity(code_a: str, code_b: str) -> float:
+    return numeric_similarity(count_branches(code_a), count_branches(code_b))
+
+
+def loop_count_similarity(code_a: str, code_b: str) -> float:
+    return numeric_similarity(count_loops(code_a), count_loops(code_b))
+
+
 def extract_structural_metrics(code_a: str, code_b: str) -> dict[str, float]:
     return {
         "control_profile": control_profile_similarity(code_a, code_b),
         "cyclomatic": cyclomatic_complexity_similarity(code_a, code_b),
         "nesting_depth": nesting_depth_similarity(code_a, code_b),
+        "statement_count": statement_count_similarity(code_a, code_b),
+        "function_count": function_count_similarity(code_a, code_b),
+        "return_count": return_count_similarity(code_a, code_b),
+        "call_count": call_count_similarity(code_a, code_b),
+        "assignment_count": assignment_count_similarity(code_a, code_b),
+        "branch_count": branch_count_similarity(code_a, code_b),
+        "loop_count": loop_count_similarity(code_a, code_b),
     }

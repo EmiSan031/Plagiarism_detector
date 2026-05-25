@@ -5,6 +5,7 @@ from .plagiarism_model import (
     SpecialistEnsemble,
     build_classifier,
     evaluate_models,
+    feature_importance,
     load_training_data,
     train_final_model,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "SpecialistEnsemble",
     "build_classifier",
     "evaluate_models",
+    "feature_importance",
     "load_training_data",
     "train_final_model",
 ]

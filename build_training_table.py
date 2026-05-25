@@ -9,6 +9,7 @@ from pathlib import Path
 from metrics import extract_all_metrics
 
 DATASET_LABELS = {
+    "no_plagiarism": "NO_PLAGIO",
     "type_1": "TYPE_I",
     "type_2": "TYPE_II",
     "type_3": "TYPE_III",
@@ -88,7 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dataset-dir",
         default="dataset",
-        help="Directory containing type_1, type_2, type_3 and type_4 folders.",
+        help="Directory containing no_plagiarism, type_1, type_2, type_3 and type_4 folders.",
     )
     parser.add_argument(
         "--output",
