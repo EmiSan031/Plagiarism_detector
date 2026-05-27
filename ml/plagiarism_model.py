@@ -14,6 +14,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_recall_fscore_support
 from sklearn.model_selection import StratifiedKFold
+from sklearn.multiclass import OneVsRestClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -88,11 +89,13 @@ def build_classifier(kind: str) -> object:
                 ("scaler", StandardScaler()),
                 (
                     "classifier",
-                    LogisticRegression(
-                        class_weight="balanced",
-                        max_iter=3000,
-                        random_state=42,
-                        solver="liblinear",
+                    OneVsRestClassifier(
+                        LogisticRegression(
+                            class_weight="balanced",
+                            max_iter=3000,
+                            random_state=42,
+                            solver="liblinear",
+                        )
                     ),
                 ),
             ]
