@@ -4,45 +4,16 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
 
 from ml import evaluate_models, feature_importance, load_training_data, train_final_model
-from ml.plagiarism_model import LABELS, select_best_model
-
-
-def format_confusion(confusion: object) -> str:
-    rows = ["              pred " + " ".join(f"{label:>8}" for label in LABELS)]
-    for label, values in zip(LABELS, confusion):
-        rows.append(f"true {label:>8} " + " ".join(f"{int(value):8d}" for value in values))
-    return "\n".join(rows)
-
-
-def format_per_class(result: object) -> str:
-    rows = ["type       precision  recall  f1     support"]
-    for label in LABELS:
-        metrics = result.per_class[label]
-        rows.append(
-            f"{label:<10} "
-            f"{metrics['precision']:.3f}      "
-            f"{metrics['recall']:.3f}   "
-            f"{metrics['f1']:.3f}  "
-            f"{int(metrics['support']):7d}"
-        )
-    return "\n".join(rows)
-
-
-def format_one_vs_rest_confusion(result: object) -> str:
-    rows = []
-    for label in LABELS:
-        values = result.one_vs_rest_confusion[label]
-        rows.extend(
-            [
-                f"{label} vs REST",
-                "                 pred label  pred rest",
-                f"true label       {values['tp']:10d} {values['fn']:10d}",
-                f"true rest        {values['fp']:10d} {values['tn']:10d}",
-            ]
-        )
-    return "\n".join(rows)
+from ml.evaluation_report import (
+    ReportMetadata,
+    format_html_report,
+    format_terminal_details,
+    format_terminal_summary,
+)
+from ml.plagiarism_model import select_best_model
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -72,31 +43,49 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         help="Model to train. auto chooses the best macro-F1 from evaluation.",
     )
+    parser.add_argument(
+        "--details",
+        action="store_true",
+        help="Print full per-model tables and confusion matrices in the terminal.",
+    )
+    parser.add_argument(
+        "--top-features",
+        type=int,
+        default=12,
+        help="Number of feature importances to print in the terminal summary.",
+    )
+    parser.add_argument(
+        "--report",
+        default="reports/plagiarism_evaluation.html",
+        help="Path for the HTML evaluation report.",
+    )
+    parser.add_argument(
+        "--no-report",
+        action="store_true",
+        help="Skip writing the HTML evaluation report file.",
+    )
+    parser.add_argument(
+        "--color",
+        choices=["auto", "always", "never"],
+        default="auto",
+        help="Colorize terminal output. auto enables color only for an interactive terminal.",
+    )
     return parser
 
 
+def use_terminal_color(color_mode: str) -> bool:
+    return color_mode == "always" or (color_mode == "auto" and sys.stdout.isatty())
+
+
 def main() -> None:
-    args = build_parser().parse_args()
+    parser = build_parser()
+    args = parser.parse_args()
+    if not args.no_report and Path(args.report).suffix.lower() not in {".html", ".htm"}:
+        parser.error("--report must point to an .html or .htm file")
+
     x, y, feature_names = load_training_data(Path(args.input), args.feature_set)
     results = evaluate_models(x, y, folds=args.folds)
-
-    print("Plagiarism model evaluation")
-    print("=" * 28)
-    print(f"Rows: {len(y)}")
-    print(f"Features: {len(feature_names)} ({args.feature_set})")
-    print(f"Folds: {args.folds}")
-    print()
-
-    for name, result in sorted(results.items(), key=lambda item: item[1].macro_f1, reverse=True):
-        print(f"{name:<12} accuracy={result.accuracy:.3f} macro_f1={result.macro_f1:.3f}")
-        print(format_per_class(result))
-        print()
-        print(format_one_vs_rest_confusion(result))
-        print()
-
     selected = select_best_model(results) if args.model == "auto" else args.model
-    print(f"Selected model: {selected}")
-    print(format_confusion(results[selected].confusion))
 
     artifact = train_final_model(
         x=x,
@@ -107,11 +96,44 @@ def main() -> None:
         feature_set=args.feature_set,
     )
     importances = feature_importance(artifact["model"], feature_names)
-    if importances:
+    metadata = ReportMetadata(
+        rows_count=len(y),
+        feature_count=len(feature_names),
+        feature_set=args.feature_set,
+        folds=args.folds,
+    )
+
+    colors = use_terminal_color(args.color)
+    print(
+        format_terminal_summary(
+            results=results,
+            selected=selected,
+            importances=importances,
+            metadata=metadata,
+            top_features=args.top_features,
+            colors=colors,
+        )
+    )
+
+    if args.details:
         print()
-        print("Top feature importance")
-        for feature, value in importances:
-            print(f"{feature:<24} {value:.4f}")
+        print(format_terminal_details(results, colors=colors))
+
+    if not args.no_report:
+        report_path = Path(args.report)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            format_html_report(
+                results=results,
+                selected=selected,
+                importances=importances,
+                metadata=metadata,
+            ),
+            encoding="utf-8",
+        )
+        print()
+        print(f"Full HTML report: {report_path}")
+
     print()
     print(f"Saved artifact: {args.output}")
 

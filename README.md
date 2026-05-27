@@ -81,7 +81,7 @@ python generate_no_plagiarism_dataset.py
 python build_training_table.py
 ```
 
-Despues entrena y evalua tres enfoques:
+Despues entrena y evalua los enfoques disponibles:
 
 - `logistic`: un modelo multiclase unico.
 - `forest`: un modelo multiclase basado en Random Forest.
@@ -93,7 +93,22 @@ Despues entrena y evalua tres enfoques:
 python train_models.py
 ```
 
-La salida muestra accuracy, macro-F1, metricas por clase, matrices one-vs-rest por tipo, matriz de confusion global y feature importance. Por default usa `--feature-set core`, elige automaticamente el modelo con mejor macro-F1 y guarda el artefacto en:
+La salida de terminal muestra un resumen corto:
+
+- ranking de modelos con accuracy, precision, recall y macro-F1
+- metricas por clase para el modelo seleccionado
+- errores de clasificacion mas comunes
+- feature importance principal
+
+Ademas, por default genera un reporte HTML completo en:
+
+```text
+reports/plagiarism_evaluation.html
+```
+
+El reporte HTML incluye las tablas completas por modelo, matrices de confusion, tablas one-vs-rest y todas las feature importances.
+
+Por default usa `--feature-set core`, elige automaticamente el modelo con mejor macro-F1 y guarda el artefacto entrenado en:
 
 ```text
 models/plagiarism_model.joblib
@@ -110,6 +125,22 @@ python train_models.py --model forest_refined
 python train_models.py --model hierarchical
 python train_models.py --feature-set all --model hierarchical
 python train_models.py --folds 10
+```
+
+Opciones de salida:
+
+```bash
+# Genera resumen en terminal y reporte HTML default
+python train_models.py --feature-set all --model hierarchical
+
+# Cambia la ruta del reporte HTML
+python train_models.py --feature-set all --model hierarchical --report reports/mi_reporte.html
+
+# No genera archivo de reporte
+python train_models.py --feature-set all --model hierarchical --no-report
+
+# Imprime tambien las tablas completas en terminal
+python train_models.py --feature-set all --model hierarchical --details
 ```
 
 Para mejorar la separacion de `TYPE_III` y `TYPE_IV`, prueba primero:
