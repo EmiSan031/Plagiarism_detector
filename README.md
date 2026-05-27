@@ -32,6 +32,22 @@ El CSV queda en:
 dataset/training_metrics.csv
 ```
 
+## Embeddings semanticos
+
+La tabla incluye la columna `code_embedding_similarity`.
+
+Por defecto se calcula con un embedding semantico local y determinista basado en AST, llamadas, operadores y conceptos del codigo. No requiere internet ni dependencias extra.
+
+Si quieres usar embeddings neuronales, instala `sentence-transformers` y define el modelo con la variable `CODE_EMBEDDING_MODEL` antes de regenerar la tabla:
+
+```bash
+pip install sentence-transformers
+set CODE_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+python build_training_table.py
+```
+
+Tambien puedes apuntar `CODE_EMBEDDING_MODEL` a una carpeta local con un modelo ya descargado.
+
 Cada metrica recibe dos strings de codigo y devuelve un valor entre `0` y `1`, donde `1` significa mayor similitud.
 
 ## Familias implementadas
@@ -71,6 +87,7 @@ Despues entrena y evalua tres enfoques:
 - `forest`: un modelo multiclase basado en Random Forest.
 - `forest_refined`: Random Forest multiclase con refinador binario para `TYPE_III` vs `TYPE_IV`.
 - `specialists`: modelos binarios one-vs-rest, uno por clase.
+- `hierarchical`: enfoque por etapas: primero `NO_PLAGIO` vs clon, despues tipo de clon, y finalmente un clasificador separado para `TYPE_III` vs `TYPE_IV`.
 
 ```bash
 python train_models.py
@@ -90,7 +107,15 @@ python train_models.py --feature-set all
 python train_models.py --feature-set family
 python train_models.py --model specialists
 python train_models.py --model forest_refined
+python train_models.py --model hierarchical
+python train_models.py --feature-set all --model hierarchical
 python train_models.py --folds 10
+```
+
+Para mejorar la separacion de `TYPE_III` y `TYPE_IV`, prueba primero:
+
+```bash
+python train_models.py --feature-set all --model hierarchical
 ```
 
 ## Prediccion de tipo de plagio

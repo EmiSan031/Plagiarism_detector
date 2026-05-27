@@ -68,7 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--folds", type=int, default=5, help="Stratified CV folds.")
     parser.add_argument(
         "--model",
-        choices=["auto", "logistic", "forest", "forest_refined", "specialists"],
+        choices=["auto", "logistic", "forest", "forest_refined", "specialists", "hierarchical"],
         default="auto",
         help="Model to train. auto chooses the best macro-F1 from evaluation.",
     )

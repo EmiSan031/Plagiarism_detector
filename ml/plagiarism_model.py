@@ -52,7 +52,12 @@ FEATURE_SETS = {
         "loop_count",
         "markov_js",
         "entropy",
+        "code_embedding_similarity",
         "semantic_normalized_ast",
+        "semantic_call_names",
+        "semantic_operators",
+        "semantic_return_shapes",
+        "semantic_comprehensions",
     ],
 }
 
@@ -104,6 +109,8 @@ def build_classifier(kind: str) -> object:
         return TypeIIIIVRefinedClassifier()
     if kind == "specialists":
         return SpecialistEnsemble()
+    if kind == "hierarchical":
+        return HierarchicalCloneClassifier()
     raise ValueError(f"Unsupported classifier: {kind}")
 
 
@@ -218,6 +225,85 @@ class TypeIIIIVRefinedClassifier(BaseEstimator, ClassifierMixin):
         return np.array([self.labels[index] for index in probabilities.argmax(axis=1)])
 
 
+class HierarchicalCloneClassifier(BaseEstimator, ClassifierMixin):
+    """Three-stage classifier with a dedicated TYPE_III vs TYPE_IV decision."""
+
+    def __init__(self, labels: Iterable[str] = LABELS) -> None:
+        self.labels = tuple(labels)
+        self.clone_detector = RandomForestClassifier(
+            class_weight="balanced",
+            max_depth=4,
+            min_samples_leaf=2,
+            n_estimators=250,
+            random_state=11,
+        )
+        self.clone_type_router = RandomForestClassifier(
+            class_weight="balanced",
+            max_depth=5,
+            min_samples_leaf=2,
+            n_estimators=300,
+            random_state=22,
+        )
+        self.type_iii_iv_refiner = RandomForestClassifier(
+            class_weight="balanced",
+            max_depth=4,
+            min_samples_leaf=2,
+            n_estimators=250,
+            random_state=33,
+        )
+        self.classes_ = np.array(self.labels)
+
+    def fit(self, x: np.ndarray, y: np.ndarray) -> "HierarchicalCloneClassifier":
+        clone_y = np.array([0 if value == "NO_PLAGIO" else 1 for value in y])
+        self.clone_detector.fit(x, clone_y)
+
+        clone_mask = y != "NO_PLAGIO"
+        routed_y = np.array(
+            ["TYPE_III_IV" if value in {"TYPE_III", "TYPE_IV"} else value for value in y[clone_mask]]
+        )
+        self.clone_type_router.fit(x[clone_mask], routed_y)
+
+        hard_mask = np.isin(y, ["TYPE_III", "TYPE_IV"])
+        hard_y = np.array([1 if value == "TYPE_IV" else 0 for value in y[hard_mask]])
+        self.type_iii_iv_refiner.fit(x[hard_mask], hard_y)
+        return self
+
+    def predict_proba(self, x: np.ndarray) -> np.ndarray:
+        clone_probability = self.clone_detector.predict_proba(x)[:, 1]
+        no_plagiarism_probability = 1.0 - clone_probability
+
+        router_probabilities = self.clone_type_router.predict_proba(x)
+        router_classes = [str(label) for label in self.clone_type_router.classes_]
+        hard_probabilities = self.type_iii_iv_refiner.predict_proba(x)
+        type_iv_probability = hard_probabilities[:, 1]
+        type_iii_probability = 1.0 - type_iv_probability
+
+        probabilities = np.zeros((x.shape[0], len(self.labels)))
+        probabilities[:, self.labels.index("NO_PLAGIO")] = no_plagiarism_probability
+
+        for label in ("TYPE_I", "TYPE_II"):
+            if label in router_classes:
+                probabilities[:, self.labels.index(label)] = (
+                    clone_probability * router_probabilities[:, router_classes.index(label)]
+                )
+
+        hard_router_probability = (
+            router_probabilities[:, router_classes.index("TYPE_III_IV")]
+            if "TYPE_III_IV" in router_classes
+            else 0.0
+        )
+        hard_total = clone_probability * hard_router_probability
+        probabilities[:, self.labels.index("TYPE_III")] = hard_total * type_iii_probability
+        probabilities[:, self.labels.index("TYPE_IV")] = hard_total * type_iv_probability
+
+        totals = probabilities.sum(axis=1, keepdims=True)
+        return np.divide(probabilities, totals, out=np.zeros_like(probabilities), where=totals != 0)
+
+    def predict(self, x: np.ndarray) -> np.ndarray:
+        probabilities = self.predict_proba(x)
+        return np.array([self.labels[index] for index in probabilities.argmax(axis=1)])
+
+
 def cross_validate_model(model: object, x: np.ndarray, y: np.ndarray, folds: int) -> FoldResult:
     splitter = StratifiedKFold(n_splits=folds, shuffle=True, random_state=42)
     predictions = np.empty_like(y)
@@ -268,7 +354,7 @@ def evaluate_models(
     x: np.ndarray,
     y: np.ndarray,
     folds: int = 5,
-    candidates: Iterable[str] = ("logistic", "forest", "forest_refined", "specialists"),
+    candidates: Iterable[str] = ("logistic", "forest", "forest_refined", "specialists", "hierarchical"),
 ) -> dict[str, FoldResult]:
     return {
         candidate: cross_validate_model(build_classifier(candidate), x, y, folds)
@@ -307,6 +393,8 @@ def feature_importance(model: object, feature_names: list[str], limit: int = 12)
     candidate = model
     if isinstance(candidate, TypeIIIIVRefinedClassifier):
         candidate = candidate.base_model
+    if isinstance(candidate, HierarchicalCloneClassifier):
+        candidate = candidate.clone_type_router
     if isinstance(candidate, Pipeline):
         classifier = candidate.named_steps.get("classifier")
         if hasattr(classifier, "coef_"):

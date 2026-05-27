@@ -2,6 +2,7 @@
 
 from .plagiarism_model import (
     FEATURE_SETS,
+    HierarchicalCloneClassifier,
     SpecialistEnsemble,
     build_classifier,
     evaluate_models,
@@ -12,6 +13,7 @@ from .plagiarism_model import (
 
 __all__ = [
     "FEATURE_SETS",
+    "HierarchicalCloneClassifier",
     "SpecialistEnsemble",
     "build_classifier",
     "evaluate_models",

@@ -1,3 +1,6 @@
 numpy
 scikit-learn
 joblib
+
+# Optional: enable neural code embeddings by setting CODE_EMBEDDING_MODEL.
+# sentence-transformers
